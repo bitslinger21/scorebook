@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../domains/config/env';
+import {
+  ALL_GAMES,
+  playedGame,
+  type MlbGameLogSplit,
+} from '../providers/mlb/mlb.service';
 
 // Live facts for Baseball IQ outside the game view (POST /iq/ask). Each
 // digest is a few lines of plain text fetched from the Stats API just now —
@@ -50,6 +55,43 @@ export class IqGroundingService {
     }
     this.cache.set(key, { at: Date.now(), text });
     return text;
+  }
+
+  // The last 10 games played, any game type, summed from the dated game log
+  // (lastXGames is regular season only by default and returns unlabelled
+  // splits across game types — PROMPT_last_n_postseason_audit.md).
+  private async lastTen(
+    mlbId: number,
+    season: string,
+    group: string,
+  ): Promise<string | null> {
+    const json = await this.get<{ stats?: { splits?: MlbGameLogSplit[] }[] }>(
+      `/v1/people/${mlbId}/stats?stats=gameLog&group=${group}&season=${season}&gameType=${ALL_GAMES}`,
+    );
+    const rows = (json.stats?.[0]?.splits ?? [])
+      .filter(playedGame)
+      .sort(
+        (a, b) =>
+          (b.date ?? '').localeCompare(a.date ?? '') ||
+          (b.game?.gamePk ?? 0) - (a.game?.gamePk ?? 0),
+      )
+      .slice(0, 10);
+    if (rows.length === 0) return null;
+    const sum = (k: string): number =>
+      rows.reduce((t, r) => t + (Number(r.stat?.[k]) || 0), 0);
+    if (group === 'pitching') {
+      const outs = rows.reduce((t, r) => {
+        const ip = r.stat?.inningsPitched;
+        const [whole, part] = (typeof ip === 'string' ? ip : '0').split('.');
+        return t + (Number(whole) || 0) * 3 + (Number(part) || 0);
+      }, 0);
+      const ip = `${Math.floor(outs / 3)}${outs % 3 ? `.${outs % 3}` : ''}`;
+      const era = outs > 0 ? ((sum('earnedRuns') * 27) / outs).toFixed(2) : '-';
+      return `${rows.length} G, ${ip} IP, ${sum('earnedRuns')} ER (${era} ERA), ${sum('strikeOuts')} K, ${sum('baseOnBalls')} BB`;
+    }
+    const ab = sum('atBats');
+    const avg = ab > 0 ? (sum('hits') / ab).toFixed(3).replace(/^0/, '') : '-';
+    return `${rows.length} G, ${sum('hits')}-for-${ab} (${avg}), ${sum('homeRuns')} HR, ${sum('rbi')} RBI, ${sum('baseOnBalls')} BB, ${sum('strikeOuts')} K`;
   }
 
   private async get<T>(path: string): Promise<T> {
@@ -109,7 +151,7 @@ export class IqGroundingService {
 
   player(mlbId: number, season: string): Promise<string | null> {
     return this.cached(`player:${mlbId}:${season}`, async () => {
-      const q = `hydrate=currentTeam,stats(group=[hitting,pitching],type=[season,career,lastXGames],season=${season},limit=10)`;
+      const q = `hydrate=currentTeam,stats(group=[hitting,pitching],type=[season,career],season=${season})`;
       const json = await this.get<{
         people?: {
           fullName: string;
@@ -150,11 +192,14 @@ export class IqGroundingService {
       for (const g of groups) {
         const season_ = line(find(p.stats, 'season', g));
         const post_ = line(find(post?.people?.[0]?.stats, 'season', g));
-        const last10 = line(find(p.stats, 'lastXGames', g));
+        const last10 = await this.lastTen(mlbId, season, g).catch(() => null);
         const career = line(find(p.stats, 'career', g));
         if (season_) out.push(`  ${season} regular season: ${season_}`);
         if (post_) out.push(`  ${season} postseason: ${post_}`);
-        if (last10) out.push(`  Last 10 regular-season games: ${last10}`);
+        if (last10)
+          out.push(
+            `  Last 10 games (regular season and postseason): ${last10}`,
+          );
         if (career) out.push(`  Career (regular season): ${career}`);
       }
       return out.length > 1 ? out.join('\n') : null;

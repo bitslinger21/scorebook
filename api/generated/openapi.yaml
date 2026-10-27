@@ -134,6 +134,13 @@ paths:
           in: query
           schema:
             type: string
+        - name: postseason
+          required: false
+          in: query
+          description: true = the team's postseason games too, in date order (for last-N
+            windows)
+          schema:
+            type: string
       responses:
         "200":
           description: ""
@@ -143,7 +150,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/SeasonGameDto"
-      summary: Full regular-season schedule for a team
+      summary: Full regular-season schedule for a team (plus its postseason games with
+        postseason=true)
       tags: *a1
   /games/upcoming:
     get:

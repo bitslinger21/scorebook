@@ -581,6 +581,16 @@ function OverviewTab({ mlbId, overview, drilldown }: OverviewTabProps): ReactEle
       });
   }, [drilldown]);
 
+  // The card's figure is over the SAME games its bars draw (not the season):
+  // the last 15 played, postseason included.
+  const formLine = useMemo((): { avg: string; h: number; ab: number } | null => {
+    if (drilldown == null) return null;
+    const rows = drilldown.gameLog.slice(0, 15);
+    const h = rows.reduce((t, g) => t + (g.hits ?? 0), 0);
+    const ab = rows.reduce((t, g) => t + (g.atBats ?? 0), 0);
+    return ab > 0 ? { avg: (h / ab).toFixed(3).replace(/^0/, ''), h, ab } : null;
+  }, [drilldown]);
+
   // Now card: compute streak and recent AVG
   const hitStreak = useMemo((): number => {
     if (!drilldown) return 0;
@@ -615,13 +625,21 @@ function OverviewTab({ mlbId, overview, drilldown }: OverviewTabProps): ReactEle
         <Card
           title="Recent form"
           subtitle={`Last ${formGames.length > 0 ? formGames.length : 15} games`}
-          action={<Pill tone="positive">▲ season avg</Pill>}
+          action={(() => {
+            // Above or below his season AVG over these games (was a fixed ▲).
+            const recent = formLine != null ? parseFloat(formLine.avg) : NaN;
+            const season = parseFloat(headline.battingAverage);
+            if (!Number.isFinite(recent) || !Number.isFinite(season)) return undefined;
+            return recent >= season
+              ? <Pill tone="positive">▲ season avg</Pill>
+              : <Pill tone="accent">▼ season avg</Pill>;
+          })()}
         >
           <div className="ov__form-top">
             <Stat
               label={`Last ${formGames.length > 0 ? formGames.length : 15} · AVG`}
-              value={headline.battingAverage}
-              sub={`${secondary.hits}-for-${secondary.atBats}`}
+              value={formLine?.avg ?? '—'}
+              sub={formLine != null ? `${formLine.h}-for-${formLine.ab}` : undefined}
               size="hero"
             />
             {formGames.length > 0 && <FormGuide games={formGames} width={210} height={56} />}

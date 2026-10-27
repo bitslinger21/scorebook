@@ -22,6 +22,36 @@ interface RecentStarter {
 }
 import type { AppConfig } from '../../domains/config/env';
 
+// Every game that counts for "last N games": regular season (R) and the
+// postseason rounds (F, D, L, W). Not spring training, exhibition or All-Star.
+export const ALL_GAMES = 'R,F,D,L,W';
+
+/** One row of MLB's per-game log (the fields read here). */
+export type MlbGameLogSplit = {
+  date?: string;
+  gameType?: string;
+  isHome?: boolean;
+  isWin?: boolean;
+  game?: { gamePk?: number };
+  opponent?: { id?: number; name?: string };
+  team?: { id?: number };
+  stat?: Record<string, unknown>;
+};
+
+/**
+ * A game he actually played: MLB lists tonight's game in the log before it
+ * starts (0 PA, yet "G 1"), which would read as an 0-for-0 and end a hitting
+ * streak. A game with no plate appearance (or no batter faced) doesn't count.
+ */
+export const playedGame = (r: MlbGameLogSplit): boolean => {
+  const pa = r.stat?.plateAppearances ?? r.stat?.battersFaced;
+  return typeof pa !== 'number' || pa > 0;
+};
+
+const newestGameFirst = (a: MlbGameLogSplit, b: MlbGameLogSplit): number =>
+  (b.date ?? '').localeCompare(a.date ?? '') ||
+  (b.game?.gamePk ?? 0) - (a.game?.gamePk ?? 0);
+
 export type MlbPerson = {
   name: string;
   bats: string | null;
@@ -1039,23 +1069,51 @@ export class MlbApiService {
     return box;
   }
 
-  /** Hits / at-bats over a batter's last `n` games. Kept 1h. */
-  getLastGamesHitting(
+  /**
+   * A player's game log for a season, regular season AND postseason, newest
+   * first. MLB's gameLog (like lastXGames) is regular season only unless the
+   * game types are named, so "last N games" went stale every October; and
+   * lastXGames with several game types returns unlabelled splits, so last-N
+   * windows are summed from these dated rows instead. Spring training,
+   * exhibition and All-Star games are excluded. Kept 10 min.
+   */
+  getPlayerGameLog(
+    mlbId: number,
+    season: string,
+    group: 'hitting' | 'pitching',
+  ): Promise<MlbGameLogSplit[]> {
+    return this.share(
+      `gameLog:${mlbId}:${season}:${group}`,
+      10 * 60_000,
+      async () => {
+        const url = `${this.base}/v1/people/${mlbId}/stats?stats=gameLog&group=${group}&season=${encodeURIComponent(season)}&gameType=${ALL_GAMES}`;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`MLB game log failed: ${res.status}`);
+        const data = (await res.json()) as {
+          stats?: { splits?: MlbGameLogSplit[] }[];
+        };
+        return (data.stats?.[0]?.splits ?? [])
+        .filter(playedGame)
+        .sort(newestGameFirst);
+      },
+    );
+  }
+
+  /** Hits / at-bats over a batter's last `n` games, any game type. */
+  async getLastGamesHitting(
     mlbId: number,
     n = 7,
   ): Promise<{ h: number; ab: number } | null> {
-    return this.share(`lastGames:${mlbId}:${n}`, 3600_000, async () => {
-      const url = `${this.base}/v1/people/${mlbId}/stats?stats=lastXGames&group=hitting&limit=${n}`;
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) return null;
-      const data = (await res.json()) as {
-        stats?: { splits?: { stat?: { hits?: number; atBats?: number } }[] }[];
-      };
-      const stat = data.stats?.[0]?.splits?.[0]?.stat;
-      return stat != null && typeof stat.atBats === 'number'
-        ? { h: stat.hits ?? 0, ab: stat.atBats }
-        : null;
-    });
+    const season = String(new Date().getFullYear());
+    const rows = (await this.getPlayerGameLog(mlbId, season, 'hitting')).slice(
+      0,
+      n,
+    );
+    if (rows.length === 0) return null;
+    return {
+      h: rows.reduce((a, r) => a + (Number(r.stat?.hits) || 0), 0),
+      ab: rows.reduce((a, r) => a + (Number(r.stat?.atBats) || 0), 0),
+    };
   }
   /**
    * Raw box score for a gamePk. Returns null on failure (callers treat a
@@ -1085,17 +1143,32 @@ export class MlbApiService {
     season: string,
   ): Promise<SeasonGameDto[]> {
     return this.share(`season:${teamId}:${season}`, 60_000, () =>
-      this.fetchSeasonScheduleForTeam(teamId, season),
+      this.fetchSeasonScheduleForTeam(teamId, season, 'R'),
+    );
+  }
+
+  /**
+   * The team's games for a season, regular season AND postseason, in date
+   * order — for "last N games" windows, which must run into October
+   * (getSeasonScheduleForTeam is the regular-season table). Kept 60s.
+   */
+  getTeamGamesWithPostseason(
+    teamId: number,
+    season: string,
+  ): Promise<SeasonGameDto[]> {
+    return this.share(`teamGames:${teamId}:${season}`, 60_000, () =>
+      this.fetchSeasonScheduleForTeam(teamId, season, ALL_GAMES),
     );
   }
 
   private async fetchSeasonScheduleForTeam(
     teamId: number,
     season: string,
+    gameTypes: string,
   ): Promise<SeasonGameDto[]> {
     const url =
       `${this.base}/v1/schedule?sportId=1&teamId=${teamId}` +
-      `&season=${encodeURIComponent(season)}&gameType=R` +
+      `&season=${encodeURIComponent(season)}&gameType=${gameTypes}` +
       `&hydrate=team,linescore,decisions,probablePitcher`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
@@ -1411,6 +1484,24 @@ export class MlbApiService {
     }
     this.allTeamIdsCache = ids;
     return ids;
+  }
+
+  /** MLB team id → abbreviation ("MIL"). Kept a day. */
+  getTeamAbbrById(): Promise<Map<number, string>> {
+    return this.share('teamAbbrById', 24 * 3600_000, async () => {
+      const res = await fetch(`${this.base}/v1/teams?sportId=1`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) throw new Error(`MLB teams lookup failed: ${res.status}`);
+      const data = (await res.json()) as {
+        teams?: { id?: number; abbreviation?: string }[];
+      };
+      const out = new Map<number, string>();
+      for (const t of data.teams ?? [])
+        if (t.id != null && t.abbreviation != null)
+          out.set(t.id, t.abbreviation);
+      return out;
+    });
   }
 }
 

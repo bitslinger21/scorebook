@@ -31,13 +31,24 @@ export class TeamsRecentFormService {
     const cached = this.cache.get(cacheKey);
     if (cached != null && Date.now() < cached.expiresAt) return cached.data;
 
+    // The team's last N games PLAYED — regular season and postseason
+    // together, in date order (PROMPT_last_n_postseason_audit.md). A
+    // postponed game is "final" at MLB with no score: not played, skipped.
     const season = String(new Date().getFullYear());
-    const schedule = await this.mlb.getSeasonScheduleForTeam(teamId, season);
-
-    const finals = schedule
-      .filter((g) => g.status === 'final' && g.providerGameId != null)
-      .sort((a, b) => a.gameDate.localeCompare(b.gameDate))
-      .slice(-count);
+    const played = (await this.mlb.getTeamGamesWithPostseason(teamId, season))
+      .filter(
+        (g) =>
+          g.status === 'final' &&
+          g.providerGameId != null &&
+          g.teamScore != null &&
+          g.oppScore != null,
+      )
+      .sort(
+        (a, b) =>
+          a.gameDate.localeCompare(b.gameDate) ||
+          (a.startTimeUtc ?? '').localeCompare(b.startTimeUtc ?? ''),
+      );
+    const finals = played.slice(-count);
 
     const boxscores = await Promise.all(
       finals.map((g) =>

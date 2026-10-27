@@ -19,8 +19,11 @@ type RosterPitcher = {
 
 type Appearance = { gameDate: string; pitches: number };
 
+// MLB's calendar day (US Eastern), the same day its game dates use. A UTC day
+// rolled over at 8pm ET, mid-game, so last night's reliever read as two days
+// ago and back-to-back days went unnoticed.
 function toDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
 function daysAgo(n: number, from: Date = new Date()): Date {
@@ -100,8 +103,10 @@ export class TeamsBullpenService {
   private async compute(teamId: number): Promise<TeamBullpenDto> {
     const pitchers = await this.fetchActivePitchers(teamId);
 
+    // Recent outings include the postseason: a reliever who pitched last
+    // night in October isn't rested (PROMPT_last_n_postseason_audit.md).
     const season = String(new Date().getFullYear());
-    const schedule = await this.mlb.getSeasonScheduleForTeam(teamId, season);
+    const schedule = await this.mlb.getTeamGamesWithPostseason(teamId, season);
 
     const today = new Date();
     const todayKey = toDateKey(today);

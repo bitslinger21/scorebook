@@ -152,16 +152,28 @@ export class GamesController {
 
   @Get('season')
   @ApiQuery({ name: 'season', required: false })
+  @ApiQuery({
+    name: 'postseason',
+    required: false,
+    description:
+      "true = the team's postseason games too, in date order (for last-N windows)",
+  })
   @ApiOkResponse({ type: SeasonGameDto, isArray: true })
-  @ApiOperation({ summary: 'Full regular-season schedule for a team' })
+  @ApiOperation({
+    summary:
+      'Full regular-season schedule for a team (plus its postseason games with postseason=true)',
+  })
   async seasonSchedule(
     @Query('teamId') teamId: string,
     @Query('season') season?: string,
+    @Query('postseason') postseason?: string,
   ): Promise<SeasonGameDto[]> {
     const teamIdNum = parseInt(teamId, 10);
     if (isNaN(teamIdNum)) return [];
     const seasonStr = season ?? String(new Date().getFullYear());
-    return this.mlbService.getSeasonScheduleForTeam(teamIdNum, seasonStr);
+    return postseason === 'true'
+      ? this.mlbService.getTeamGamesWithPostseason(teamIdNum, seasonStr)
+      : this.mlbService.getSeasonScheduleForTeam(teamIdNum, seasonStr);
   }
 
   @Get('upcoming')

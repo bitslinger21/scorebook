@@ -15,6 +15,7 @@ import { FollowButton } from '../components/primitives/FollowButton';
 import { Segmented } from '../components/primitives/Segmented';
 import { TEAM_NICKNAMES } from '../utils/teamNicknames';
 import { TEAMS } from '../utils/teams';
+import { teamForm } from '../utils/teamForm';
 
 const CURRENT_SEASON = String(new Date().getFullYear());
 
@@ -248,7 +249,8 @@ async function fetchRoster(teamId: number): Promise<RosterPlayer[]> {
 
 async function fetchTeamSeason(teamId: number): Promise<SeasonGame[]> {
   try {
-    const url = `/api/games/season?teamId=${teamId}&season=${encodeURIComponent(CURRENT_SEASON)}`;
+    // Postseason games too: recent form runs into October.
+    const url = `/api/games/season?teamId=${teamId}&season=${encodeURIComponent(CURRENT_SEASON)}&postseason=true`;
     const res = await fetch(url);
     if (!res.ok) return [];
     return (await res.json()) as SeasonGame[];
@@ -1305,6 +1307,9 @@ export default function TeamPage(): ReactElement {
   const [upcomingGames, setUpcomingGames] = useState<GameDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [formChips, setFormChips] = useState<FormChip[] | null>(null);
+  // L10 + streak over games played, regular season and postseason (the
+  // header's form); null until loaded → the standings' values meanwhile.
+  const [form, setForm] = useState<{ lastTen: string; streak: string | null } | null>(null);
   const [todaySeasonGame, setTodaySeasonGame] = useState<SeasonGame | null>(null);
 
   useEffect(() => {
@@ -1352,12 +1357,11 @@ export default function TeamPage(): ReactElement {
             setUpcomingGames((upResp.data as unknown as GameDto[]) ?? []);
           }
 
-          // BUG 1 fix: derive real W/L order from the game log
-          const completed = seasonGames
-            .filter(g => g.status === 'final' && g.teamScore !== null && g.oppScore !== null)
-            .sort((a, b) => a.gameDate.localeCompare(b.gameDate));
-          const last10 = completed.slice(-10);
-          setFormChips(last10.map(g => ({
+          // BUG 1 fix: derive real W/L order from the game log — the last 10
+          // games played, postseason included.
+          const recent = teamForm(seasonGames);
+          setForm({ lastTen: recent.lastTen, streak: recent.streak });
+          setFormChips(recent.last10.map(g => ({
             result: g.teamScore! > g.oppScore! ? 'W' : 'L',
             date: g.gameDate,
             oppAbbr: g.oppAbbr,
@@ -1404,7 +1408,8 @@ export default function TeamPage(): ReactElement {
       : null;
   const cardGame = todayCardGame ?? nextGameAsUpcoming;
 
-  const streakIsWin = myStanding?.streak?.startsWith('W') ?? false;
+  const shownStreak = form?.streak ?? myStanding?.streak ?? null;
+  const streakIsWin = shownStreak?.startsWith('W') ?? false;
 
   if (loading) {
     return (
@@ -1484,9 +1489,9 @@ export default function TeamPage(): ReactElement {
             <div className="tp__hstat">
               <div className="tp__hstat-l">Streak</div>
               <div className={`tp__hstat-v num${streakIsWin ? ' tp__hstat-v--pos' : ' tp__hstat-v--neg'}`}>
-                {myStanding.streak}
+                {shownStreak ?? '—'}
               </div>
-              <div className="tp__hstat-sub num">{myStanding.lastTen} L10</div>
+              <div className="tp__hstat-sub num">{form?.lastTen ?? myStanding.lastTen} L10</div>
             </div>
           </div>
         </div>

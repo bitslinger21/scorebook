@@ -215,6 +215,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "postseason",
+            "required": false,
+            "in": "query",
+            "description": "true = the team's postseason games too, in date order (for last-N windows)",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -232,7 +241,7 @@
             }
           }
         },
-        "summary": "Full regular-season schedule for a team",
+        "summary": "Full regular-season schedule for a team (plus its postseason games with postseason=true)",
         "tags": [
           "games"
         ]

@@ -19,7 +19,11 @@ import {
   VsTeamRowDto,
 } from './dtos/player-drilldown.dto';
 import { VsPlayerDto } from './dtos/vs-player.dto';
-import { MlbApiService } from '../providers/mlb/mlb.service';
+import {
+  ALL_GAMES,
+  MlbApiService,
+  playedGame,
+} from '../providers/mlb/mlb.service';
 
 type StatsApiResponse = {
   stats?: Array<{
@@ -498,29 +502,23 @@ export class PlayersService {
     atBats: number;
   } | null> {
     try {
-      const url =
-        `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats` +
-        `?stats=gameLog&group=hitting&season=${season}&gameType=R&limit=1`;
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
-      if (!res.ok) return null;
-      const data = (await res.json()) as Record<string, unknown>;
-      const statsArr = Array.isArray(data.stats)
-        ? (data.stats as Record<string, unknown>[])
-        : [];
-      const splits = Array.isArray(statsArr[0]?.splits)
-        ? (statsArr[0].splits as Record<string, unknown>[])
-        : [];
-      const last = splits[0] ?? null;
+      // The newest game played, regular season or postseason. (MLB's game-log
+      // opponent carries no abbreviation — it was looked for here and never
+      // found, so this widget never showed; it's mapped from the team id.)
+      const [rows, abbrs] = await Promise.all([
+        this.mlb.getPlayerGameLog(Number(mlbId), String(season), 'hitting'),
+        this.mlb.getTeamAbbrById(),
+      ]);
+      const last = rows[0];
       if (last == null) return null;
-
-      const stat = (last.stat ?? {}) as Record<string, unknown>;
-      const gameDate = typeof last.date === 'string' ? last.date : null; // 'YYYY-MM-DD'
-      const opponent = ((last.opponent ?? {}) as Record<string, unknown>)
-        .abbreviation;
+      const stat = last.stat ?? {};
+      const gameDate = last.date ?? null; // 'YYYY-MM-DD'
+      const opponent =
+        last.opponent?.id != null ? abbrs.get(last.opponent.id) : undefined;
       const hits = typeof stat.hits === 'number' ? stat.hits : 0;
       const atBats = typeof stat.atBats === 'number' ? stat.atBats : 0;
 
-      if (gameDate == null || typeof opponent !== 'string') return null;
+      if (gameDate == null || opponent == null) return null;
 
       // Format date as "Aug 26" (abbreviated month + day)
       const d = new Date(gameDate + 'T12:00:00'); // noon UTC avoids tz rollover
@@ -1051,6 +1049,8 @@ export class PlayersService {
     try {
       type RawGameLogEntry = {
         date?: string;
+        gameType?: string;
+        game?: { gamePk?: number };
         isHome?: boolean;
         isWin?: boolean;
         opponent?: { id?: number; name?: string };
@@ -1066,11 +1066,13 @@ export class PlayersService {
       const [glHitRes, glPitRes, carHitRes, carPitRes, postHitRes, postPitRes] =
         await Promise.all([
           fetch(
-            `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=hitting&season=${season}`,
+            // Regular season AND postseason: "last N games" must run into
+            // October (gameLog alone is regular season only).
+            `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=hitting&season=${season}&gameType=${ALL_GAMES}`,
             { headers: { Accept: 'application/json' } },
           ),
           fetch(
-            `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=pitching&season=${season}`,
+            `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=pitching&season=${season}&gameType=${ALL_GAMES}`,
             { headers: { Accept: 'application/json' } },
           ),
           fetch(
@@ -1135,10 +1137,13 @@ export class PlayersService {
       const isPitcher = rawGlPit.length > rawGlHit.length;
       const rawGl = isPitcher ? rawGlPit : rawGlHit;
 
-      const gameLog: GameLogRowDto[] = rawGl
+      // Rows keep their game type here (not on the wire): season figures —
+      // the running AVG, vs Team — are computed per phase below.
+      const typed = rawGl
+        .filter(playedGame)
         .map((e) => {
           const s = e.stat ?? {};
-          return {
+          const row: GameLogRowDto = {
             date: e.date ?? '',
             opponent: e.opponent?.name ?? '—',
             opponentId: e.opponent?.id ?? 0,
@@ -1158,22 +1163,51 @@ export class PlayersService {
             era: asStringOrNull(s.era),
             whip: asStringOrNull(s.whip),
           };
+          return { row, post: e.gameType !== 'R', pk: e.game?.gamePk ?? 0 };
         })
-        .sort((a, b) => a.date.localeCompare(b.date)); // chronological for accumulation
+        // chronological for accumulation (doubleheaders by game id)
+        .sort((a, b) => a.row.date.localeCompare(b.row.date) || a.pk - b.pk);
 
-      // Compute running season-to-date AVG: accumulate Σhits/ΣatBats oldest→newest.
-      // This ensures smooth game-to-game movement and a final value that equals
-      // season Σhits/ΣatBats — the same numerator/denominator the season AVG uses.
-      let runH = 0;
-      let runAB = 0;
-      for (const g of gameLog) {
-        runH += g.hits ?? 0;
-        runAB += g.atBats ?? 0;
-        g.runningAvg = runAB > 0 ? runH / runAB : null;
+      // Running AVG to date, oldest→newest, kept PER PHASE: the regular-season
+      // rows end on the season AVG (same Σhits/ΣatBats it uses); postseason
+      // rows run postseason-to-date. Mixing them would move "season" AVG.
+      const run = { reg: { h: 0, ab: 0 }, post: { h: 0, ab: 0 } };
+      for (const t of typed) {
+        const acc = t.post ? run.post : run.reg;
+        acc.h += t.row.hits ?? 0;
+        acc.ab += t.row.atBats ?? 0;
+        t.row.runningAvg = acc.ab > 0 ? acc.h / acc.ab : null;
       }
 
-      // Re-sort newest-first for the client
-      gameLog.sort((a, b) => b.date.localeCompare(a.date));
+      // Newest-first for the client: the last N games played, any game type.
+      const gameLog: GameLogRowDto[] = typed.map((t) => t.row).reverse();
+
+      // A game still in progress reads as "not won" in MLB's log, so it showed
+      // as an L. Only the newest rows can be unfinished: look those up in the
+      // day's schedule and leave the result empty until the game is final.
+      const yesterday = new Date(Date.now() - 24 * 3600_000).toLocaleDateString(
+        'en-CA',
+        { timeZone: 'America/New_York' },
+      );
+      const recent = typed.filter((t) => t.row.date >= yesterday);
+      if (recent.length > 0) {
+        const dates = [...new Set(recent.map((t) => t.row.date))];
+        const schedules = await Promise.all(
+          dates.map((d) => this.mlb.getScheduleByDate(d).catch(() => [])),
+        );
+        const finalPks = new Set(
+          schedules
+            .flat()
+            .filter((g) => g.status === 'final' && g.providerGameId != null)
+            .map((g) => String(g.providerGameId)),
+        );
+        for (const t of recent)
+          if (!finalPks.has(String(t.pk))) t.row.isWin = null;
+      }
+      // Season figures stay regular season.
+      const seasonLog: GameLogRowDto[] = typed
+        .filter((t) => !t.post)
+        .map((t) => t.row);
 
       const toCareerRow = (e: RawCareerEntry): CareerRowDto => {
         const s = e.stat ?? {};
@@ -1229,7 +1263,7 @@ export class PlayersService {
             tb: number;
           }
         >();
-        for (const g of gameLog) {
+        for (const g of seasonLog) {
           if (g.opponentId === 0 || g.atBats == null) continue;
           const existing = byTeam.get(g.opponentId) ?? {
             name: g.opponent,
@@ -1259,7 +1293,7 @@ export class PlayersService {
           vsTeam.push({
             opponentId: id,
             opponent: t.name,
-            games: gameLog.filter((g) => g.opponentId === id).length,
+            games: seasonLog.filter((g) => g.opponentId === id).length,
             atBats: t.ab,
             hits: t.h,
             homeRuns: t.hr,

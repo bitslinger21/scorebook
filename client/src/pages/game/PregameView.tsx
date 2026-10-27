@@ -8,6 +8,7 @@ import { LineScoreBand } from "./LineScoreBand";
 import { PregameFirstMatchup } from "./PregameFirstMatchup";
 import { fmtClock, pregameLineupState } from "./pregameLineups";
 import { useGameLineups } from "../../hooks/useGameLineups";
+import { teamForm, type FormGameInput } from "../../utils/teamForm";
 import "./PregameView.css";
 
 // ── Types ─────────────────────────────────────────────────
@@ -29,6 +30,26 @@ interface ProbableInfo {
 }
 
 // ── Helpers ───────────────────────────────────────────────
+
+/** L10 + streak over the team's games played, regular season and postseason. */
+function useRecentForm(teamId: number | null): { lastTen: string; streak: string | null } | null {
+  const [form, setForm] = useState<{ lastTen: string; streak: string | null } | null>(null);
+  useEffect(() => {
+    if (teamId == null) return;
+    let alive = true;
+    const season = String(new Date().getFullYear());
+    fetch(`/api/games/season?teamId=${teamId}&season=${season}&postseason=true`)
+      .then((r) => (r.ok ? (r.json() as Promise<FormGameInput[]>) : null))
+      .then((games) => {
+        if (!alive || games == null || games.length === 0) return;
+        const f = teamForm(games);
+        setForm({ lastTen: f.lastTen, streak: f.streak });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [teamId]);
+  return form;
+}
 
 function handLabel(code: string | null | undefined): string {
   if (code === "L") return "LHP";
@@ -105,6 +126,8 @@ interface PregameLineScoreBandProps {
   homeEra: string | null;
   awayForm: StandingTeamDto | null;
   homeForm: StandingTeamDto | null;
+  awayRecent: { lastTen: string; streak: string | null } | null;
+  homeRecent: { lastTen: string; streak: string | null } | null;
 }
 
 // A thin wrapper around the shared LineScoreBand (PROMPT_linescore_band.md §6b):
@@ -122,6 +145,8 @@ function PregameLineScoreBand({
   homeEra,
   awayForm,
   homeForm,
+  awayRecent,
+  homeRecent,
 }: PregameLineScoreBandProps): ReactElement {
   const zones = (
     <div className="preg-zones">
@@ -158,20 +183,25 @@ function PregameLineScoreBand({
       <div className="preg-zones__zone preg-zones__zone--form">
         <div className="lsb__eyebrow">Coming in</div>
         {[
-          { form: awayForm, meta: awayMeta, abbr: game.awayAbbr },
-          { form: homeForm, meta: homeMeta, abbr: game.homeAbbr },
-        ].map(({ form, meta, abbr }) => (
+          { form: awayForm, recent: awayRecent, meta: awayMeta, abbr: game.awayAbbr },
+          { form: homeForm, recent: homeRecent, meta: homeMeta, abbr: game.homeAbbr },
+        ].map(({ form, recent, meta, abbr }) => {
+          // Record = the regular season; L10 and streak = games played, the
+          // postseason included (the standings' values until those load).
+          const lastTen = recent?.lastTen ?? form?.lastTen;
+          const streak = recent?.streak ?? form?.streak;
+          return (
           <div key={abbr} className="lsb__leader">
             <TeamLogo meta={meta} abbr={abbr} size={22} onDark />
             <div>
               <div className="preg-zones__rec num">{fmtRecord(form?.wins, form?.losses)}</div>
               <div className="preg-zones__form-sub">
-                {form != null ? (
+                {lastTen != null ? (
                   <>
-                    L10 <span className="num">{form.lastTen}</span>
+                    L10 <span className="num">{lastTen}</span>
                     {" · "}Streak{" "}
-                    <span className={`num ${(form.streak ?? "").charAt(0) === "W" ? "preg-zones__strk--win" : "preg-zones__strk--loss"}`}>
-                      {form.streak}
+                    <span className={`num ${(streak ?? "").charAt(0) === "W" ? "preg-zones__strk--win" : "preg-zones__strk--loss"}`}>
+                      {streak ?? "—"}
                     </span>
                   </>
                 ) : (
@@ -180,7 +210,8 @@ function PregameLineScoreBand({
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -216,6 +247,9 @@ export function PregameView({ game, lineupsOpen, onToggleLineups }: PregameViewP
 
   const awayForm = standings.find((s) => s.abbr === game.awayAbbr) ?? null;
   const homeForm = standings.find((s) => s.abbr === game.homeAbbr) ?? null;
+  const g = game as unknown as { awayTeamId?: number | null; homeTeamId?: number | null };
+  const awayRecent = useRecentForm(g.awayTeamId ?? null);
+  const homeRecent = useRecentForm(g.homeTeamId ?? null);
 
   const awayPitcherMlbId = awayProbable?.mlbId ?? null;
   const homePitcherMlbId = homeProbable?.mlbId ?? null;
@@ -262,6 +296,8 @@ export function PregameView({ game, lineupsOpen, onToggleLineups }: PregameViewP
         homeEra={homeEra}
         awayForm={awayForm}
         homeForm={homeForm}
+        awayRecent={awayRecent}
+        homeRecent={homeRecent}
       />
 
       {lineups != null && lineupState !== "none" ? (
