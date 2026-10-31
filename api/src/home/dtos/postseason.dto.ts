@@ -82,6 +82,12 @@ export class PostseasonSeriesDto {
   @ApiProperty({ type: PostseasonGameDto, isArray: true }) games!: PostseasonGameDto[];
 }
 
+export class PostseasonMvpDto {
+  @ApiProperty({ example: 'Jeremy Peña' }) name!: string;
+  @ApiProperty({ example: 665161 }) mlbId!: number;
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'SS' }) pos!: string | null;
+}
+
 export class PostseasonBracketDto {
   @ApiProperty({ type: PostseasonSeriesDto, isArray: true }) alwc!: PostseasonSeriesDto[];
   @ApiProperty({ type: PostseasonSeriesDto, isArray: true }) alds!: PostseasonSeriesDto[];
@@ -90,8 +96,8 @@ export class PostseasonBracketDto {
   @ApiPropertyOptional({ type: PostseasonSeriesDto, nullable: true }) nlcs!: PostseasonSeriesDto | null;
   @ApiProperty({ type: PostseasonSeriesDto, isArray: true }) nlds!: PostseasonSeriesDto[];
   @ApiProperty({ type: PostseasonSeriesDto, isArray: true }) nlwc!: PostseasonSeriesDto[];
-  @ApiPropertyOptional({ type: String, nullable: true, example: 'Jeremy Peña', description: 'null until MLB names one.' })
-  wsMvp!: string | null;
+  @ApiPropertyOptional({ type: PostseasonMvpDto, nullable: true, description: 'null until MLB names one.' })
+  wsMvp!: PostseasonMvpDto | null;
 }
 
 export class PostseasonResponseDto {

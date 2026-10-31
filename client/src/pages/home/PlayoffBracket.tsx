@@ -1,16 +1,16 @@
 import { Fragment, useCallback, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { TeamDot } from "../../components/primitives/TeamDot";
+import type { TeamInfo } from "../../utils/teams";
 import { SeriesDrawer } from "./SeriesDrawer";
 import {
   championOf,
   formatDay,
-  formatLocalDay,
   formatWhen,
-  leaderFirst,
   teamInfo,
   type PostseasonBracketWire,
   type PostseasonChampion,
+  type PostseasonMvpWire,
   type PostseasonSeriesWire,
   type PostseasonSideWire,
 } from "./postseason";
@@ -89,6 +89,7 @@ function CurrentCard({
       className="pb__card pb__card--current"
       style={{ width: BK.curW, height: BK.H }}
       onClick={onOpen}
+      title="See games"
     >
       <CurrentTeamRow side={s.high} other={s.low} started={started} followed={followed} />
       <CurrentTeamRow side={s.low} other={s.high} started={started} followed={followed} />
@@ -127,13 +128,15 @@ function FinishedCard({
 }): ReactElement {
   const rows = s.high.eliminated ? [s.low, s.high] : [s.high, s.low];
   const [w, l] = rows;
+  const done = `${w.team?.abbr ?? ""} won ${w.wins}–${l.wins}`;
   return (
     <button
       type="button"
       className="pb__card pb__card--done"
       style={{ width: BK.doneW }}
       onClick={onOpen}
-      title={`${w.team?.abbr ?? ""} won ${w.wins}–${l.wins}`}
+      aria-label={`${done} — see games`}
+      title={`${done} · see games`}
     >
       {rows.map((side, i) => {
         const abbr = side.team?.abbr ?? "";
@@ -190,58 +193,83 @@ function UpcomingCard({ s, followed }: { s: PostseasonSeriesWire; followed: Read
 
 // ── Champion: above the bracket once the World Series is decided ──
 
-// "Philadelphia" from "Philadelphia Phillies"; the Athletics have no city.
-function cityOf(abbr: string): string {
-  const { name, short } = teamInfo(abbr);
-  return name.slice(0, name.length - short.length).trim() || name;
+const PHOTO_BASE = "https://img.mlbstatic.com/mlb-photos/image/upload";
+
+// Three stages, tried in order: 0 = action photo, 1 = headshot, 2 = club logo
+// (no MVP yet, or both images failed). The panel is there from the final out,
+// so the banner doesn't change size when the MVP is announced.
+function ChampMvpPanel({ mvp, team }: { mvp: PostseasonMvpWire | null; team: TeamInfo }): ReactElement {
+  const [stage, setStage] = useState(mvp != null ? 0 : 2);
+  // The white caption waits for the photo, so it never flashes on cream.
+  const [photoLoaded, setPhotoLoaded] = useState(false);
+  const fail = (): void => setStage((s) => s + 1);
+  const onPhoto = mvp != null && stage === 0;
+  return (
+    <div className={`pb__mvp${onPhoto ? " pb__mvp--photo" : ""}`}>
+      {mvp != null && stage === 0 && (
+        <img
+          className="pb__mvp-action"
+          src={`${PHOTO_BASE}/w_760,q_auto:good/v1/people/${mvp.mlbId}/action/hero/current`}
+          alt={mvp.name}
+          onLoad={() => setPhotoLoaded(true)}
+          onError={fail}
+        />
+      )}
+      {mvp != null && stage === 1 && (
+        <img
+          className="pb__mvp-head"
+          src={`${PHOTO_BASE}/w_240,q_auto:best/v1/people/${mvp.mlbId}/headshot/67/current`}
+          alt={mvp.name}
+          onError={fail}
+        />
+      )}
+      {stage >= 2 && (
+        <div className="pb__mvp-logo">
+          <TeamDot team={team} size={72} />
+        </div>
+      )}
+      {onPhoto && photoLoaded && <div className="pb__mvp-scrim" />}
+      {(!onPhoto || photoLoaded) && (
+        <div className="pb__mvp-caption">
+          {mvp != null ? (
+            <>
+              <span className="pb__mvp-label">Series MVP</span>
+              <span className="pb__mvp-name">
+                {mvp.name}
+                {mvp.pos != null && <span className="pb__mvp-pos"> · {mvp.pos}</span>}
+              </span>
+            </>
+          ) : (
+            <span className="pb__mvp-none">Series MVP not yet named</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
-// Gold is the achievement colour; rust stays reserved for live, so the only
-// rust here is the button's hover.
-function ChampionBanner({
-  c,
-  followed,
-  onOpen,
-}: {
-  c: PostseasonChampion;
-  followed: ReadonlySet<string>;
-  onOpen: () => void;
-}): ReactElement {
-  const g = c.clinchGame;
-  const [win, lose] = leaderFirst(g);
+// Gold is the achievement colour; club colours appear only in the stripe, and
+// there's no rust, because rust means live.
+function ChampionBanner({ c, followed }: { c: PostseasonChampion; followed: ReadonlySet<string> }): ReactElement {
+  const team = teamInfo(c.team.abbr, c.team.id);
   return (
     <div className="pb__champ">
-      <TeamDot team={teamInfo(c.team.abbr, c.team.id)} size={56} />
-      <div className="pb__champ-text">
-        <span className="pb__champ-eyebrow">
-          {g.date.slice(0, 4)} World Series champions{followed.has(c.team.abbr) ? " · you follow" : ""}
-        </span>
-        <span className="pb__champ-name">{teamInfo(c.team.abbr).name}</span>
-        <span className="pb__champ-summary">
-          Beat the {teamInfo(c.opp.abbr).short}{" "}
-          <span className="pb__champ-record num">
-            {c.w}–{c.l}
+      <div className="pb__champ-stripe" style={{ top: 0, height: 8, background: team.primary }} />
+      <div className="pb__champ-stripe" style={{ top: 8, height: 4, background: team.secondary }} />
+      <div className="pb__champ-main">
+        <TeamDot team={team} size={56} />
+        <div className="pb__champ-text">
+          <span className="pb__champ-eyebrow">
+            {c.year} World Series champions{followed.has(c.team.abbr) ? " · you follow" : ""}
           </span>
-          {" · "}Won Game {g.number}
-          {g.host != null ? ` at ${cityOf(g.host)}` : ""}, {g.startTime != null ? formatLocalDay(g.startTime) : formatDay(g.date)}
-          {c.mvp != null ? ` · MVP ${c.mvp}` : ""}
-        </span>
-      </div>
-      <div className="pb__champ-side">
-        <div className="pb__champ-score">
-          <span className="pb__champ-game">Game {g.number}</span>
-          <TeamDot team={teamInfo(win.abbr)} size={18} />
-          <span className="pb__champ-abbr pb__champ-abbr--win">{win.abbr}</span>
-          <span className="pb__champ-runs pb__champ-runs--win num">{win.runs}</span>
-          <span className="pb__champ-dash num">–</span>
-          <span className="pb__champ-runs num">{lose.runs}</span>
-          <span className="pb__champ-abbr">{lose.abbr}</span>
-          <TeamDot team={teamInfo(lose.abbr)} size={18} />
+          <span className="pb__champ-name">{team.name}</span>
+          <span className="pb__champ-summary">
+            Beat the {teamInfo(c.opp.abbr).short} <span className="pb__champ-record num">{c.w}</span> games to{" "}
+            <span className="pb__champ-record num">{c.l}</span>
+          </span>
         </div>
-        <button type="button" className="pb__champ-btn" onClick={onOpen}>
-          World Series games →
-        </button>
       </div>
+      <ChampMvpPanel key={c.mvp?.mlbId ?? "none"} mvp={c.mvp} team={team} />
     </div>
   );
 }
@@ -391,7 +419,7 @@ export function PlayoffBracket({
 
   return (
     <>
-      {champ != null && <ChampionBanner c={champ} followed={followed} onOpen={() => open(champ.seriesId)} />}
+      {champ != null && <ChampionBanner c={champ} followed={followed} />}
       <div className="pb__scroller">
         <div className="pb__row">
           {cols.map((c, i) => (
@@ -402,6 +430,13 @@ export function PlayoffBracket({
           ))}
         </div>
         {openSeries != null && <SeriesDrawer series={openSeries} closing={closing} onClose={close} />}
+      </div>
+      <div className="pb__hint">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <rect x="1" y="2.5" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+          <path d="M5 4.5 L7 6 L5 7.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span>Select any series to see its games</span>
       </div>
     </>
   );

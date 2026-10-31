@@ -73,6 +73,12 @@ export interface PostseasonSeries {
   games: PostseasonGame[];
 }
 
+export interface PostseasonMvp {
+  name: string;
+  mlbId: number;
+  pos: string | null; // "SS"
+}
+
 export interface PostseasonBracket {
   alwc: PostseasonSeries[]; // [feeds ALDS[0], feeds ALDS[1]]
   alds: PostseasonSeries[]; // [seed-1 series, seed-2 series]
@@ -81,7 +87,7 @@ export interface PostseasonBracket {
   nlcs: PostseasonSeries | null;
   nlds: PostseasonSeries[];
   nlwc: PostseasonSeries[];
-  wsMvp: string | null; // null until the World Series is decided and MLB names one
+  wsMvp: PostseasonMvp | null; // null until the World Series is decided and MLB names one
 }
 
 export interface PostseasonResponse {

@@ -966,17 +966,21 @@ export class MlbApiService {
   }
 
   /**
-   * The World Series MVP's name, or null until MLB names one (or on any
-   * failure — it's an optional line). Re-checked every 10 min.
+   * The World Series MVP, or null until MLB names one (or on any failure —
+   * the banner has a state for that). Re-checked every 10 min.
    */
-  getWorldSeriesMvp(season: string): Promise<string | null> {
+  getWorldSeriesMvp(season: string): Promise<{ name: string; mlbId: number; pos: string | null } | null> {
     return this.share(`wsMvp:${season}`, 10 * 60_000, async () => {
       const url = `${this.base}/v1/awards/WSMVP/recipients?sportId=1&season=${encodeURIComponent(season)}`;
       try {
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) return null;
-        const data = (await res.json()) as { awards?: { player?: { nameFirstLast?: string } }[] };
-        return data.awards?.[0]?.player?.nameFirstLast ?? null;
+        const data = (await res.json()) as {
+          awards?: { player?: { id?: number; nameFirstLast?: string; primaryPosition?: { abbreviation?: string } } }[];
+        };
+        const p = data.awards?.[0]?.player;
+        if (p?.id == null || p.nameFirstLast == null) return null;
+        return { name: p.nameFirstLast, mlbId: p.id, pos: p.primaryPosition?.abbreviation ?? null };
       } catch {
         return null;
       }

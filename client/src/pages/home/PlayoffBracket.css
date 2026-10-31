@@ -4,16 +4,32 @@
 /* ── Champion banner: outside the scroller, so it never scrolls away ───── */
 
 .pb__champ {
+  /* Eased stops on purpose: a two-stop fade shows a visible edge. */
+  --pb-photo-mask: linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.08) 8%, rgba(0, 0, 0, 0.25) 18%, rgba(0, 0, 0, 0.5) 30%, rgba(0, 0, 0, 0.78) 42%, #000 56%);
+  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 18px;
-  row-gap: 12px;
-  padding: 16px 20px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 34%);
+  min-height: 156px;
   margin: 0 32px 18px; /* lines up with .pb__row's side padding */
   background: var(--color-highlight-soft);
   border: 1px solid #c8941c66;
   border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.pb__champ-stripe {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2; /* over the photo */
+}
+
+.pb__champ-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 18px;
+  padding: 28px 20px 16px;
 }
 
 .pb__champ-text {
@@ -54,82 +70,134 @@
   color: var(--color-text);
 }
 
-.pb__champ-side {
+/* MVP panel: no background of its own, so the cream shows through. */
+.pb__mvp {
+  position: relative;
+  min-height: 156px;
+  overflow: hidden;
+}
+
+.pb__mvp-action {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  display: block;
+  -webkit-mask-image: var(--pb-photo-mask);
+  mask-image: var(--pb-photo-mask);
+}
+
+/* Separate from the caption, with the same mask, so it dissolves leftward
+   with the photo and never fades the text. */
+.pb__mvp-scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  background: linear-gradient(to top, rgba(21, 22, 26, 0.82), rgba(21, 22, 26, 0));
+  -webkit-mask-image: var(--pb-photo-mask);
+  mask-image: var(--pb-photo-mask);
+  pointer-events: none;
+}
+
+.pb__mvp-head {
+  position: absolute;
+  right: 30px;
+  bottom: 40px;
+  height: calc(100% - 52px);
+  width: auto;
+  display: block;
+  --pb-head-mask: linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.6) 14%, #000 30%, #000 70%, rgba(0, 0, 0, 0.6) 86%, rgba(0, 0, 0, 0) 100%), linear-gradient(to top, rgba(0, 0, 0, 0) 0%, #000 28%);
+  -webkit-mask-image: var(--pb-head-mask);
+  mask-image: var(--pb-head-mask);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+.pb__mvp-logo {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding-bottom: 34px;
+  opacity: 0.85;
+}
+
+.pb__mvp-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 14px 12px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 1px;
+  text-align: right;
 }
 
-.pb__champ-score {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.pb__champ-game {
+.pb__mvp-label {
   font-family: var(--font-sans);
   font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  margin-right: 4px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-highlight-text);
 }
 
-.pb__champ-abbr {
+.pb__mvp-name {
   font-family: var(--font-sans);
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-}
-
-.pb__champ-runs {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-}
-
-.pb__champ-abbr--win,
-.pb__champ-runs--win {
+  font-size: 16px;
   font-weight: 700;
   color: var(--color-text);
 }
 
-.pb__champ-dash {
+.pb__mvp-pos {
+  font-size: 13px;
+  font-weight: 500;
   color: var(--color-text-muted);
 }
 
-.pb__champ-btn {
+.pb__mvp-none {
+  align-self: center;
   font-family: var(--font-sans);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  padding: 6px 11px;
-  cursor: pointer;
+  color: var(--color-text-muted);
 }
 
-.pb__champ-btn:hover {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+/* Light text only on the scrim. */
+.pb__mvp--photo .pb__mvp-caption {
+  padding: 22px 14px 10px;
 }
 
-.pb__champ-btn:focus-visible {
-  outline: 2px solid var(--color-ink);
-  outline-offset: 2px;
+.pb__mvp--photo .pb__mvp-label {
+  color: #f0d690;
 }
 
-/* Wraps rather than squeezes: the side column drops under the text. */
+.pb__mvp--photo .pb__mvp-name {
+  color: #fff;
+}
+
+.pb__mvp--photo .pb__mvp-pos {
+  color: #e4e4e7;
+}
+
+/* One column: the photo becomes a band above the text, dissolving downward. */
 @media (max-width: 640px) {
   .pb__champ {
+    --pb-photo-mask: linear-gradient(to bottom, #000 44%, rgba(0, 0, 0, 0.78) 58%, rgba(0, 0, 0, 0.5) 70%, rgba(0, 0, 0, 0.25) 82%, rgba(0, 0, 0, 0.08) 92%, rgba(0, 0, 0, 0) 100%);
+    grid-template-columns: minmax(0, 1fr);
     margin: 0 0 18px;
   }
 
-  .pb__champ-side {
-    grid-column: 2;
-    align-items: flex-start;
+  .pb__mvp {
+    order: -1;
+    min-height: 0;
+    height: 140px;
   }
 }
 
@@ -147,6 +215,17 @@
   min-width: 980px;
   padding: 0 32px; /* room for headers wider than their round to overhang evenly */
   box-sizing: border-box;
+}
+
+/* Outside the scroller, and always visible: touch has no hover. */
+.pb__hint {
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 /* ── Rounds ───────────────────────────────────────────────────────────── */
@@ -229,8 +308,12 @@
   cursor: pointer;
 }
 
-button.pb__card:hover {
+/* Only the cards that open the drawer are buttons; "not set yet" cards get none of this. */
+button.pb__card:hover,
+button.pb__card:focus-visible {
   background: var(--color-surface-alt);
+  border-color: var(--color-text-muted);
+  box-shadow: 0 1px 3px rgba(21, 22, 26, 0.12);
 }
 
 button.pb__card:focus-visible {
