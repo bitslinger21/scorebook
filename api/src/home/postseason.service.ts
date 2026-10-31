@@ -282,7 +282,7 @@ export class PostseasonService {
       return out;
     };
 
-    const bracket: PostseasonBracket = { alwc: [], alds: [], alcs: null, ws: null, nlcs: null, nlds: [], nlwc: [] };
+    const bracket: PostseasonBracket = { alwc: [], alds: [], alcs: null, ws: null, nlcs: null, nlds: [], nlwc: [], wsMvp: null };
     const lcsByLeague: Partial<Record<'AL' | 'NL', Work>> = {};
     for (const league of ['AL', 'NL'] as const) {
       // Top slot = the seed-1 Division Series, with the Wild Card that feeds it.
@@ -299,6 +299,7 @@ export class PostseasonService {
     const ws = works.find((w) => w.round === 'ws');
     if (ws != null) {
       bracket.ws = build(ws, [lcsByLeague.AL, lcsByLeague.NL].filter((w): w is Work => w != null));
+      if (ws.winner != null) bracket.wsMvp = await this.mlb.getWorldSeriesMvp(season);
     }
 
     return { active: true, note: this.noteFor(works, shortNames), bracket };
@@ -566,7 +567,7 @@ export class PostseasonService {
       return day != null ? `Field set · Wild Card Series start ${dayName[day]}` : 'Field set';
     }
     const ws = works.find((w) => w.round === 'ws');
-    if (ws?.winner != null) return `${shortNames.get(ws.winner) ?? ws.winner} won the World Series`;
+    if (ws?.winner != null) return 'Season over';
     const current = ROUND_ORDER.find((r) => works.some((w) => w.round === r && w.winner == null)) ?? 'ws';
     const eliminated = works.filter((w) => w.winner != null).length;
     return `${ROUND_NAME[current]} · ${POSTSEASON_BERTHS - eliminated} clubs left`;

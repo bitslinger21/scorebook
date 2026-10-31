@@ -1,6 +1,138 @@
 /* Postseason bracket — values verbatim from holistic/bracket.jsx
    (PROMPT_postseason_bracket.md §2, README §1). */
 
+/* ── Champion banner: outside the scroller, so it never scrolls away ───── */
+
+.pb__champ {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 18px;
+  row-gap: 12px;
+  padding: 16px 20px;
+  margin: 0 32px 18px; /* lines up with .pb__row's side padding */
+  background: var(--color-highlight-soft);
+  border: 1px solid #c8941c66;
+  border-radius: var(--radius-sm);
+}
+
+.pb__champ-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pb__champ-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-highlight-text);
+}
+
+.pb__champ-name {
+  font-family: var(--font-sans);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: var(--color-text);
+  text-wrap: pretty;
+}
+
+.pb__champ-summary {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-wrap: pretty;
+}
+
+.pb__champ-record {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.pb__champ-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.pb__champ-score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.pb__champ-game {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-right: 4px;
+}
+
+.pb__champ-abbr {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.pb__champ-runs {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.pb__champ-abbr--win,
+.pb__champ-runs--win {
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.pb__champ-dash {
+  color: var(--color-text-muted);
+}
+
+.pb__champ-btn {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+  cursor: pointer;
+}
+
+.pb__champ-btn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.pb__champ-btn:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+/* Wraps rather than squeezes: the side column drops under the text. */
+@media (max-width: 640px) {
+  .pb__champ {
+    margin: 0 0 18px;
+  }
+
+  .pb__champ-side {
+    grid-column: 2;
+    align-items: flex-start;
+  }
+}
+
 /* Scrolls rather than squeezes below 980; the bottom padding keeps the
    scrollbar off the cards. */
 .pb__scroller {

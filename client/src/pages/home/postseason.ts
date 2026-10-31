@@ -72,6 +72,7 @@ export interface PostseasonBracketWire {
   nlcs: PostseasonSeriesWire | null;
   nlds: PostseasonSeriesWire[];
   nlwc: PostseasonSeriesWire[];
+  wsMvp: string | null;
 }
 
 export interface PostseasonWire {
@@ -125,6 +126,12 @@ export function formatDay(date: string): string {
   return `${wd} ${pad2(m)}/${pad2(d)}`;
 }
 
+// "Thu 10/29" in the viewer's timezone, from an ISO instant.
+export function formatLocalDay(iso: string): string {
+  const t = new Date(iso);
+  return `${WEEKDAYS[t.getDay()]} ${pad2(t.getMonth() + 1)}/${pad2(t.getDate())}`;
+}
+
 // "Wed 10/07 7:08" — the local start time; date only while MLB has it TBD.
 export function formatWhen(date: string, startTime: string | null): string {
   if (startTime == null) return formatDay(date);
@@ -145,4 +152,33 @@ export function formatDuration(sec: number): string {
 // "3–1"; a dash only ever means a series. Finals read winner first.
 export function leaderFirst(g: PostseasonGameWire): [PostseasonGameSideWire, PostseasonGameSideWire] {
   return (g.home.runs ?? 0) > (g.away.runs ?? 0) ? [g.home, g.away] : [g.away, g.home];
+}
+
+export interface PostseasonChampion {
+  team: PostseasonTeamWire;
+  opp: PostseasonTeamWire;
+  w: number;
+  l: number;
+  clinchGame: PostseasonGameWire;
+  mvp: string | null;
+  seriesId: string;
+}
+
+// The finished World Series, as the champion banner reads it. A condition, not
+// a date: null until a club has reached 4 wins.
+export function championOf(bracket: PostseasonBracketWire): PostseasonChampion | null {
+  const ws = bracket.ws;
+  if (ws == null || ws.state !== "finished") return null;
+  const [win, lose] = ws.high.eliminated ? [ws.low, ws.high] : [ws.high, ws.low];
+  const clinchGame = ws.games.filter((g) => g.state === "final").at(-1);
+  if (win.team == null || lose.team == null || clinchGame == null) return null;
+  return {
+    team: win.team,
+    opp: lose.team,
+    w: win.wins,
+    l: lose.wins,
+    clinchGame,
+    mvp: bracket.wsMvp,
+    seriesId: ws.id,
+  };
 }

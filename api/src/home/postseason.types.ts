@@ -81,6 +81,7 @@ export interface PostseasonBracket {
   nlcs: PostseasonSeries | null;
   nlds: PostseasonSeries[];
   nlwc: PostseasonSeries[];
+  wsMvp: string | null; // null until the World Series is decided and MLB names one
 }
 
 export interface PostseasonResponse {

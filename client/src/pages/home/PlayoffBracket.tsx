@@ -3,10 +3,14 @@ import type { ReactElement } from "react";
 import { TeamDot } from "../../components/primitives/TeamDot";
 import { SeriesDrawer } from "./SeriesDrawer";
 import {
+  championOf,
   formatDay,
+  formatLocalDay,
   formatWhen,
+  leaderFirst,
   teamInfo,
   type PostseasonBracketWire,
+  type PostseasonChampion,
   type PostseasonSeriesWire,
   type PostseasonSideWire,
 } from "./postseason";
@@ -184,6 +188,64 @@ function UpcomingCard({ s, followed }: { s: PostseasonSeriesWire; followed: Read
   );
 }
 
+// ── Champion: above the bracket once the World Series is decided ──
+
+// "Philadelphia" from "Philadelphia Phillies"; the Athletics have no city.
+function cityOf(abbr: string): string {
+  const { name, short } = teamInfo(abbr);
+  return name.slice(0, name.length - short.length).trim() || name;
+}
+
+// Gold is the achievement colour; rust stays reserved for live, so the only
+// rust here is the button's hover.
+function ChampionBanner({
+  c,
+  followed,
+  onOpen,
+}: {
+  c: PostseasonChampion;
+  followed: ReadonlySet<string>;
+  onOpen: () => void;
+}): ReactElement {
+  const g = c.clinchGame;
+  const [win, lose] = leaderFirst(g);
+  return (
+    <div className="pb__champ">
+      <TeamDot team={teamInfo(c.team.abbr, c.team.id)} size={56} />
+      <div className="pb__champ-text">
+        <span className="pb__champ-eyebrow">
+          {g.date.slice(0, 4)} World Series champions{followed.has(c.team.abbr) ? " · you follow" : ""}
+        </span>
+        <span className="pb__champ-name">{teamInfo(c.team.abbr).name}</span>
+        <span className="pb__champ-summary">
+          Beat the {teamInfo(c.opp.abbr).short}{" "}
+          <span className="pb__champ-record num">
+            {c.w}–{c.l}
+          </span>
+          {" · "}Won Game {g.number}
+          {g.host != null ? ` at ${cityOf(g.host)}` : ""}, {g.startTime != null ? formatLocalDay(g.startTime) : formatDay(g.date)}
+          {c.mvp != null ? ` · MVP ${c.mvp}` : ""}
+        </span>
+      </div>
+      <div className="pb__champ-side">
+        <div className="pb__champ-score">
+          <span className="pb__champ-game">Game {g.number}</span>
+          <TeamDot team={teamInfo(win.abbr)} size={18} />
+          <span className="pb__champ-abbr pb__champ-abbr--win">{win.abbr}</span>
+          <span className="pb__champ-runs pb__champ-runs--win num">{win.runs}</span>
+          <span className="pb__champ-dash num">–</span>
+          <span className="pb__champ-runs num">{lose.runs}</span>
+          <span className="pb__champ-abbr">{lose.abbr}</span>
+          <TeamDot team={teamInfo(lose.abbr)} size={18} />
+        </div>
+        <button type="button" className="pb__champ-btn" onClick={onOpen}>
+          World Series games →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Rounds and the gaps between them ──
 
 // One horizontal connector segment (1.5px, one colour everywhere).
@@ -325,18 +387,22 @@ export function PlayoffBracket({
 
   const all = [...bracket.alwc, ...bracket.alds, ...single(bracket.alcs), ...single(bracket.ws), ...single(bracket.nlcs), ...bracket.nlds, ...bracket.nlwc];
   const openSeries = openId != null ? (all.find((s) => s.id === openId) ?? null) : null;
+  const champ = championOf(bracket);
 
   return (
-    <div className="pb__scroller">
-      <div className="pb__row">
-        {cols.map((c, i) => (
-          <Fragment key={c.label}>
-            {i > 0 && <BracketGap {...gaps[i - 1]} />}
-            <BracketCol c={c} followed={followed} onOpen={open} />
-          </Fragment>
-        ))}
+    <>
+      {champ != null && <ChampionBanner c={champ} followed={followed} onOpen={() => open(champ.seriesId)} />}
+      <div className="pb__scroller">
+        <div className="pb__row">
+          {cols.map((c, i) => (
+            <Fragment key={c.label}>
+              {i > 0 && <BracketGap {...gaps[i - 1]} />}
+              <BracketCol c={c} followed={followed} onOpen={open} />
+            </Fragment>
+          ))}
+        </div>
+        {openSeries != null && <SeriesDrawer series={openSeries} closing={closing} onClose={close} />}
       </div>
-      {openSeries != null && <SeriesDrawer series={openSeries} closing={closing} onClose={close} />}
-    </div>
+    </>
   );
 }

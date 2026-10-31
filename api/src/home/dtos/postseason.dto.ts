@@ -90,6 +90,8 @@ export class PostseasonBracketDto {
   @ApiPropertyOptional({ type: PostseasonSeriesDto, nullable: true }) nlcs!: PostseasonSeriesDto | null;
   @ApiProperty({ type: PostseasonSeriesDto, isArray: true }) nlds!: PostseasonSeriesDto[];
   @ApiProperty({ type: PostseasonSeriesDto, isArray: true }) nlwc!: PostseasonSeriesDto[];
+  @ApiPropertyOptional({ type: String, nullable: true, example: 'Jeremy Peña', description: 'null until MLB names one.' })
+  wsMvp!: string | null;
 }
 
 export class PostseasonResponseDto {
