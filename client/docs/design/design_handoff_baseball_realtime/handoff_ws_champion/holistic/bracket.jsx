@@ -61,7 +61,7 @@ window.BRACKET = {
   },
   // 'final' = Fri 10/30, the morning after the World Series ended. Every card is a Finished card.
   final: {
-    champ: { abbr: 'HOU', name: 'Houston Astros', opp: 'PHI', w: 4, l: 2, clinch: 'Won Game 6 at Philadelphia, Thu 10/29', score: { a: 'HOU', as: 4, b: 'PHI', bs: 2 }, mvp: 'Jeremy Peña', series: 'PHI-HOU' },
+    champ: { abbr: 'HOU', name: 'Houston Astros', opp: 'PHI', w: 4, l: 2, clinch: 'Won Game 6 at Philadelphia, Thu 10/29', g: 6, score: { a: 'HOU', as: 4, b: 'PHI', bs: 2 }, mvp: 'Jeremy Peña', mvpId: 665161, mvpPos: 'SS', series: 'PHI-HOU' },
     alwc: [
       { hi: { abbr: 'BOS', seed: 4, w: 2 }, lo: { abbr: 'TOR', seed: 5, w: 0, out: true }, done: 'BOS won 2–0' },
       { hi: { abbr: 'SEA', seed: 3, w: 1, out: true }, lo: { abbr: 'HOU', seed: 6, w: 2 }, done: 'HOU won 2–1' }],
@@ -80,12 +80,38 @@ window.BRACKET = {
   },
 };
 
-// CHAMPION BANNER (Oct 30, 2026). Once the World Series ends, one line ABOVE the bracket names the
+// CHAMPION BANNER (Oct 30, 2026). Once the World Series ends, the banner ABOVE the bracket names the
 // champion. Above, not below: it is the answer the bracket was asking, and below it would sit
 // under a sideways scroller on narrow screens. Gold = the app's "streak/achievement" colour;
 // rust stays reserved for live. The bracket underneath is unchanged — every card is Finished.
-function ChampionBanner({ c, followed, onOpen }) {
-  const [hov, setHov] = React.useState(false);
+// Oct 31: club stripe on top (8px primary + 4px secondary) says whose title it is; text colours unchanged.
+// Oct 31 (rev 3): MVP photo feature — the right ~third is the MVP's action photo, dissolving left into the
+// cream. Image chain: action shot → headshot (portrait, faded on 3 sides, caption below) → club logo +
+// "Series MVP not yet named". The MVP leaves the summary line. Review: `WS Champion Banner - Options.html` (B).
+const CHAMP_PHOTO_MASK = 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.08) 8%, rgba(0,0,0,0.25) 18%, rgba(0,0,0,0.5) 30%, rgba(0,0,0,0.78) 42%, #000 56%)';
+const CHAMP_HEAD_MASK = 'linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,0.6) 14%, #000 30%, #000 70%, rgba(0,0,0,0.6) 86%, rgba(0,0,0,0) 100%), linear-gradient(to top, rgba(0,0,0,0) 0%, #000 28%)';
+function ChampMvpPanel({ c, team }) {
+  // stage 0 = action shot, 1 = headshot, 2 = club logo (no MVP yet, or both images failed)
+  const [stage, setStage] = React.useState(c.mvpId ? (c.mvpForceNoAction ? 1 : 0) : 2);
+  const fail = () => setStage(s => s + 1);
+  const base = 'https://img.mlbstatic.com/mlb-photos/image/upload';
+  const onPhoto = c.mvp && stage === 0;
+  return (
+    <div style={{ position: 'relative', minHeight: 156, overflow: 'hidden' }}>
+      {stage === 0 && <img src={`${base}/w_760,q_auto:good/v1/people/${c.mvpId}/action/hero/current`} alt={c.mvp} onError={fail} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 25%', display: 'block', WebkitMaskImage: CHAMP_PHOTO_MASK, maskImage: CHAMP_PHOTO_MASK }} />}
+      {stage === 1 && <img src={`${base}/w_240,q_auto:best/v1/people/${c.mvpId}/headshot/67/current`} alt={c.mvp} onError={fail} style={{ position: 'absolute', right: 30, bottom: 40, height: 'calc(100% - 52px)', width: 'auto', display: 'block', WebkitMaskImage: CHAMP_HEAD_MASK, maskImage: CHAMP_HEAD_MASK, WebkitMaskComposite: 'source-in', maskComposite: 'intersect' }} />}
+      {stage >= 2 && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', paddingBottom: 34 }}><img src={`https://www.mlbstatic.com/team-logos/${team.id}.svg`} alt="" style={{ width: 72, opacity: 0.85 }} /></div>}
+      {onPhoto && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 64, background: 'linear-gradient(to top, rgba(21,22,26,0.82), rgba(21,22,26,0))', WebkitMaskImage: CHAMP_PHOTO_MASK, maskImage: CHAMP_PHOTO_MASK, pointerEvents: 'none' }}></div>}
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: onPhoto ? '22px 14px 10px' : '0 14px 12px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+        {c.mvp ? <>
+          <span style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: onPhoto ? '#f0d690' : T.highlightText }}>Series MVP</span>
+          <span style={{ fontFamily: T.sans, fontSize: 16, fontWeight: 700, color: onPhoto ? '#fff' : T.text }}>{c.mvp} <span style={{ fontWeight: 500, color: onPhoto ? '#e4e4e7' : T.textMuted, fontSize: 13 }}>· {c.mvpPos}</span></span>
+        </> : <span style={{ fontFamily: T.sans, fontSize: 13, fontWeight: 600, color: T.textMuted, alignSelf: 'center' }}>Series MVP not yet named</span>}
+      </div>
+    </div>
+  );
+}
+function ChampionBanner({ c, followed }) {
   const team = TEAMS[c.abbr], opp = TEAMS[c.opp];
   const isF = followed.includes(c.abbr);
   const mono = { fontFamily: T.mono, fontVariantNumeric: 'tabular-nums' };
@@ -93,17 +119,20 @@ function ChampionBanner({ c, followed, onOpen }) {
   const sc = (n, win) => <span style={{ ...mono, fontSize: 15, fontWeight: win ? 700 : 500, color: win ? T.text : T.textMuted }}>{n}</span>;
   const s = c.score;
   return (
-    <div data-screen-label="Champion banner" style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr) auto', alignItems: 'center', columnGap: 18, rowGap: 12, padding: '16px 20px', margin: '0 32px 18px', background: T.highlightSoft, border: `1px solid ${T.highlight}66`, borderRadius: T.r.sm }}>
-      <window.TeamMark team={team} size={56} />
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <span style={{ fontFamily: T.sans, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.highlightText }}>2026 World Series champions{isF ? ' · you follow' : ''}</span>
-        <span style={{ fontFamily: T.sans, fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em', color: T.text, lineHeight: 1.15, textWrap: 'pretty' }}>{c.name}</span>
-        <span style={{ fontFamily: T.sans, fontSize: 13, color: T.textMuted, textWrap: 'pretty' }}>Beat the {opp.name.split(' ').slice(-1)[0]} <span style={{ ...mono, color: T.text, fontWeight: 600 }}>{c.w}–{c.l}</span> · {c.clinch}{c.mvp ? <> · MVP {c.mvp}</> : null}</span>
+    <div data-screen-label="Champion banner" style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(240px,34%)', minHeight: 156, margin: '0 32px 18px', background: T.highlightSoft, border: `1px solid ${T.highlight}66`, borderRadius: T.r.sm, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 8, background: team.primary, zIndex: 2 }}></div>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 8, height: 4, background: team.secondary, zIndex: 2 }}></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr)', alignItems: 'center', columnGap: 18, padding: '28px 20px 16px' }}>
+        <window.TeamMark team={team} size={56} />
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{ fontFamily: T.sans, fontSize: 11.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: T.highlightText }}>2026 World Series champions{isF ? ' · you follow' : ''}</span>
+            <span style={{ fontFamily: T.sans, fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em', color: T.text, lineHeight: 1.15, textWrap: 'pretty' }}>{c.name}</span>
+            <span style={{ fontFamily: T.sans, fontSize: 13, color: T.textMuted, textWrap: 'pretty' }}>Beat the {opp.name.split(' ').slice(-1)[0]} <span style={{ ...mono, color: T.text, fontWeight: 600 }}>{c.w}</span> games to <span style={{ ...mono, color: T.text, fontWeight: 600 }}>{c.l}</span></span>
+          </div>
+        </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 600, color: T.textMuted, marginRight: 4 }}>Game 6</span><TeamDot team={TEAMS[s.a]} size={18} />{ab(s.a, true)}{sc(s.as, true)}<span style={{ ...mono, color: T.textMuted }}>–</span>{sc(s.bs, false)}{ab(s.b, false)}<TeamDot team={TEAMS[s.b]} size={18} /></div>
-        <button onClick={onOpen} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ fontFamily: T.sans, fontSize: 12.5, fontWeight: 600, color: hov ? T.accent : T.text, background: T.surface, border: `1px solid ${hov ? T.accent : T.borderStrong}`, borderRadius: T.r.sm, padding: '6px 11px', cursor: 'pointer' }}>World Series games →</button>
-      </div>
+      <ChampMvpPanel key={c.mvpId || 'none'} c={c} team={team} />
     </div>
   );
 }
@@ -122,14 +151,14 @@ function BracketTeam({ t, other, started, followed }) {
   );
 }
 
-const cardBox = (hov, w) => ({ width: w, margin: '0 auto', boxSizing: 'border-box', background: hov ? T.surfaceAlt : T.surface, border: `1px solid ${T.border}`, borderRadius: T.r.sm, overflow: 'hidden', cursor: 'pointer', position: 'relative', zIndex: 1 });
+const cardBox = (hov, w) => ({ width: w, margin: '0 auto', boxSizing: 'border-box', background: hov ? T.surfaceAlt : T.surface, border: `1px solid ${hov ? T.textMuted : T.border}`, boxShadow: hov ? '0 1px 3px rgba(21,22,26,0.12)' : 'none', borderRadius: T.r.sm, overflow: 'hidden', cursor: 'pointer', position: 'relative', zIndex: 1 });
 
 // A finished series: logo + wins (right-justified), winner first on a pale-green row.
 function BracketDone({ s, followed, onOpen }) {
   const [hov, setHov] = React.useState(false);
   const rows = s.hi.out ? [s.lo, s.hi] : [s.hi, s.lo];
   return (
-    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} onClick={onOpen} title={s.done} style={cardBox(hov, BK.doneW)}>
+    <div role="button" tabIndex={0} aria-label={`${s.done} — see games`} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())} onFocus={() => setHov(true)} onBlur={() => setHov(false)} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} onClick={onOpen} title={`${s.done} · see games`} style={cardBox(hov, BK.doneW)}>
       {rows.map((t, i) => {
         const win = !t.out, isF = followed.includes(t.abbr);
         return (
@@ -181,7 +210,7 @@ function BracketCurrent({ s, bo, followed, onOpen }) {
   const started = s.hi.w != null;
   const ln = { fontFamily: T.mono, fontSize: 11, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
   return (
-    <div onClick={onOpen} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{ ...cardBox(hov, BK.curW), height: BK.H, display: 'flex', flexDirection: 'column' }}>
+    <div role="button" tabIndex={0} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())} onFocus={() => setHov(true)} onBlur={() => setHov(false)} onClick={onOpen} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} title="See games" style={{ ...cardBox(hov, BK.curW), height: BK.H, display: 'flex', flexDirection: 'column' }}>
       <BracketTeam t={s.hi} other={s.lo} started={started} followed={followed} />
       <BracketTeam t={s.lo} other={s.hi} started={started} followed={followed} />
       <div style={{ flex: 1, borderTop: `1px solid ${T.border}`, padding: `0 ${BK.pad}px`, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2, minWidth: 0 }}>
@@ -272,7 +301,7 @@ window.PlayoffBracket = function PlayoffBracket({ state = 'ds', followed = ['HOU
   ];
   return (
     <div>
-    {d.champ && <ChampionBanner c={d.champ} followed={followed} onOpen={() => openSeries(d.ws)} />}
+    {d.champ && <ChampionBanner c={d.champ} followed={followed} />}
     <div style={{ overflowX: 'auto', overflowY: 'hidden', paddingBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: 980, padding: '0 32px', boxSizing: 'border-box' }}>
         {cols.map((c, i) => (
@@ -282,6 +311,10 @@ window.PlayoffBracket = function PlayoffBracket({ state = 'ds', followed = ['HOU
           </React.Fragment>
         ))}
       </div>
+    </div>
+    <div style={{ padding: '0 32px', display: 'flex', alignItems: 'center', gap: 6, fontFamily: T.sans, fontSize: 12, color: T.textMuted }}>
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="2.5" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3"/><path d="M5 4.5 L7 6 L5 7.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      <span>Select any series to see its games</span>
     </div>
       {open && window.SeriesDrawer && <window.SeriesDrawer {...open} onClose={() => setOpen(null)} />}
     </div>
